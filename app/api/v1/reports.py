@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
-from app.models.models import ChatSession, ChartConfiguration, ChatMessage, SessionWorkflow, Report, Settings
+from app.models.models import ChatSession, ChartConfiguration, ChatMessage, SessionWorkflow, Report, Settings, ReportMessageSQL
 from datetime import datetime
 from app.schemas.report import Report as ReportSchema, ReportCreate
 from pydantic import BaseModel
@@ -190,28 +190,38 @@ def update_report(report_id: int, report_name: str = None, report_desc: str = No
 
 @router.post("/{report_id}/messages")
 def add_message(report_id: int, msg: ChatMessageCreate, db: Session = Depends(get_db)):
-    # Find the ChatSession for this report
-    session = db.query(ChatSession).filter(ChatSession.ReportName == None, ChatSession.Id == report_id).first()
-    if not session:
-        # Try to find by report name if needed
-        session = db.query(ChatSession).filter(ChatSession.ReportName == None).first()
-        if not session:
-            # Or create a new session if not found
-            session = ChatSession(UserId="admin", CreatedAt=datetime.utcnow(), ReportName=None, IsActive=True)
-            db.add(session)
-            db.commit()
-            db.refresh(session)
-    chat_msg = ChatMessage(
-        ChatSessionId=session.Id,
+    # Check if the report exists
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    report_msg = ReportMessageSQL(
+        ReportId=report_id,
         Message=msg.message,
+        GeneratedSql=msg.generated_sql,
         Role=msg.role,
-        CreatedAt=datetime.utcnow(),
-        GeneratedSql=msg.generated_sql
+        CreatedAt=datetime.utcnow()
     )
-    db.add(chat_msg)
+    db.add(report_msg)
     db.commit()
-    db.refresh(chat_msg)
-    return {"message": "Saved", "id": chat_msg.Id}
+    db.refresh(report_msg)
+    return {"message": "Saved", "id": report_msg.Id}
+
+@router.get("/{report_id}/messages")
+def get_report_messages(report_id: int, db: Session = Depends(get_db)):
+    messages = db.query(ReportMessageSQL).filter(
+        ReportMessageSQL.ReportId == report_id,
+        ReportMessageSQL.is_deleted == False
+    ).order_by(ReportMessageSQL.CreatedAt.desc()).all()
+    return [
+        {
+            "id": m.Id,
+            "message": m.Message,
+            "generated_sql": m.GeneratedSql,
+            "role": m.Role,
+            "created_at": m.CreatedAt
+        }
+        for m in messages
+    ]
 
 @router.post("/db-metadata")
 def get_db_metadata(req: DBMetaRequest):
@@ -332,7 +342,9 @@ def generate_sql(req: GenerateSQLRequest, db: Session = Depends(get_db)):
     # Compose prompt
     prompt = (
         "You are an expert SQL generator. Given this database schema (in JSON) and a user request, "
-        "write a valid SQL query using the schema. Only output the SQL.\n"
+        "write a valid SQL query using the schema. "
+        "Always list all column names explicitly in the SELECT clause (do not use *). "
+        "Only output the SQL, no explanation or markdown.\n"
         f"Schema: {db_schema}\n"
         f"User request: {req.message}\n"
         "SQL:"

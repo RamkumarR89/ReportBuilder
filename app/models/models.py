@@ -117,3 +117,13 @@ class Settings(Base):
     db_password = Column(String(255), nullable=True)
     gemini_model = Column(String(255), nullable=True)
     gemini_api_key = Column(String(255), nullable=True)
+
+class ReportMessageSQL(Base):
+    __tablename__ = "ReportMessageSQL"
+    Id = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+    ReportId = Column(Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
+    Message = Column(Text, nullable=False)
+    GeneratedSql = Column(Text, nullable=True)
+    Role = Column(String(50), nullable=False)
+    CreatedAt = Column(DateTime, nullable=False, default=datetime.utcnow)
+    is_deleted = Column(Boolean, default=False, nullable=False)

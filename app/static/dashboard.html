@@ -121,6 +121,7 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
+            <div id="msgGenMessages" class="mb-3"></div>
             <form id="msgGenForm">
               <input type="hidden" id="msgGenReportId">
               <div class="mb-3">
@@ -317,6 +318,16 @@
                     document.getElementById('msgGenMessage').value = '';
                     document.getElementById('msgGenSQL').value = '';
                     document.getElementById('msgGenMsg').textContent = '';
+                    // Fetch the most recent message for this report and load into form
+                    fetch(`/api/v1/reports/${id}/messages`)
+                        .then(res => res.json())
+                        .then(messages => {
+                            if (messages.length > 0) {
+                                // Load the most recent message into the form fields
+                                document.getElementById('msgGenMessage').value = messages[0].message;
+                                document.getElementById('msgGenSQL').value = messages[0].generated_sql;
+                            }
+                        });
                     var modal = new bootstrap.Modal(document.getElementById('msgGenModal'));
                     modal.show();
                 });
