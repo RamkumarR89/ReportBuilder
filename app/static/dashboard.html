@@ -92,7 +92,7 @@
                 const response = await fetch('/api/v1/reports/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: name, description })
+                    body: JSON.stringify({ title: name, description, is_deleted: false })
                 });
                 if (response.ok) {
                     msg.classList.remove('text-danger');
