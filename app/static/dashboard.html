@@ -19,7 +19,7 @@
                         <a class="nav-link active" aria-current="page" href="/static/dashboard.html">Home</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" id="reportListBtn">Report List</a>
+                        <a class="nav-link" href="#" id="reportListBtn">Report List <span id="schemaStatusBadge" class="badge"></span></a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" id="createReportBtn">Create Report</a>
@@ -421,6 +421,32 @@
             document.getElementById('settingsMsg').textContent = 'Settings saved!';
             setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide(); }, 1000);
         });
+
+        // Function to update schema status badge
+        function updateSchemaStatusBadge() {
+            const badge = document.getElementById('schemaStatusBadge');
+            if (localStorage.getItem('dbMetadata')) {
+                badge.textContent = 'Schema Loaded';
+                badge.className = 'badge bg-success';
+            } else {
+                badge.textContent = 'Schema Not Loaded';
+                badge.className = 'badge bg-danger';
+            }
+        }
+        updateSchemaStatusBadge();
+
+        // On dashboard load, fetch schema if not in localStorage
+        if (!localStorage.getItem('dbMetadata')) {
+            fetch('/api/v1/reports/db-metadata')
+                .then(res => res.json())
+                .then(data => {
+                    localStorage.setItem('dbMetadata', JSON.stringify(data));
+                    updateSchemaStatusBadge();
+                })
+                .catch(() => {
+                    updateSchemaStatusBadge();
+                });
+        }
     </script>
 </body>
 </html> 

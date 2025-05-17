@@ -7,6 +7,9 @@ from datetime import datetime
 from app.schemas.report import Report as ReportSchema, ReportCreate
 from pydantic import BaseModel
 from app.schemas.settings import SettingsCreate, SettingsResponse
+import pyodbc
+import json
+import os
 
 router = APIRouter()
 
@@ -14,6 +17,12 @@ class ChatMessageCreate(BaseModel):
     message: str
     generated_sql: str
     role: str = "admin"
+
+class DBMetaRequest(BaseModel):
+    server: str
+    user: str
+    password: str
+    database: str
 
 @router.post("/sessions/")
 async def create_session(
@@ -198,4 +207,105 @@ def save_settings(settings_in: SettingsCreate, db: Session = Depends(get_db)):
         db.add(settings)
     db.commit()
     db.refresh(settings)
-    return settings 
+    return settings
+
+@router.post("/db-metadata")
+def get_db_metadata(req: DBMetaRequest):
+    conn_str = (
+        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+        f"SERVER={req.server};"
+        f"UID={req.user};"
+        f"PWD={req.password};"
+        f"DATABASE={req.database};"
+        f"TrustServerCertificate=yes;"
+    )
+    query = '''
+SELECT 
+    t.name AS TableName,
+    s.name AS SchemaName,
+    (
+        SELECT 
+            c.name AS ColumnName,
+            ty.name AS DataType,
+            c.max_length AS MaxLength,
+            c.precision AS Precision,
+            c.scale AS Scale,
+            c.is_nullable AS IsNullable,
+            c.is_identity AS IsIdentity,
+            dc.definition AS DefaultValue
+        FROM sys.columns c
+        INNER JOIN sys.types ty ON c.user_type_id = ty.user_type_id
+        LEFT JOIN sys.default_constraints dc 
+            ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+        WHERE c.object_id = t.object_id
+        FOR JSON PATH
+    ) AS Columns,
+    (
+        SELECT DISTINCT
+            kc.name AS PrimaryKeyName,
+            col.name AS ColumnName
+        FROM sys.key_constraints kc
+        INNER JOIN sys.index_columns ic 
+            ON kc.parent_object_id = ic.object_id AND kc.unique_index_id = ic.index_id
+        INNER JOIN sys.columns col 
+            ON ic.object_id = col.object_id AND ic.column_id = col.column_id
+        WHERE kc.parent_object_id = t.object_id AND kc.type = 'PK'
+        FOR JSON PATH
+    ) AS PrimaryKeys,
+    (
+        SELECT DISTINCT
+            fk.name AS ForeignKeyName,
+            pc.name AS ColumnName,
+            rt.name AS ReferencedTable,
+            rc.name AS ReferencedColumn
+        FROM sys.foreign_keys fk
+        INNER JOIN sys.foreign_key_columns fkc 
+            ON fk.object_id = fkc.constraint_object_id
+        INNER JOIN sys.columns pc 
+            ON fkc.parent_object_id = pc.object_id AND fkc.parent_column_id = pc.column_id
+        INNER JOIN sys.columns rc 
+            ON fkc.referenced_object_id = rc.object_id AND fkc.referenced_column_id = rc.column_id
+        INNER JOIN sys.tables rt 
+            ON rt.object_id = rc.object_id
+        WHERE fk.parent_object_id = t.object_id
+        FOR JSON PATH
+    ) AS ForeignKeys
+FROM sys.tables t
+INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
+where s.name not in ('alerts','bops','cache','ftp','integration','reports','sellerrating','smart','admin')
+ORDER BY s.name, t.name FOR JSON PATH;
+'''
+    schema_file_path = os.path.join(os.path.dirname(__file__), '../../schemas/schema_metadata.json')
+    schema_file_path = os.path.normpath(schema_file_path)
+    try:
+        with pyodbc.connect(conn_str) as conn:
+            cursor = conn.cursor()
+            cursor.execute(query)
+            columns = [column[0] for column in cursor.description]
+            results = []
+            for row in cursor.fetchall():
+                row_dict = dict(zip(columns, row))
+                for key in ["Columns", "PrimaryKeys", "ForeignKeys"]:
+                    if row_dict.get(key):
+                        row_dict[key] = json.loads(row_dict[key])
+                results.append(row_dict)
+            # Write to file
+            with open(schema_file_path, 'w', encoding='utf-8') as f:
+                json.dump(results, f, ensure_ascii=False, indent=2)
+            return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB error: {str(e)}")
+
+# New endpoint to read schema metadata from file
+@router.get("/db-metadata-file")
+def get_db_metadata_file():
+    schema_file_path = os.path.join(os.path.dirname(__file__), '../../schemas/schema_metadata.json')
+    schema_file_path = os.path.normpath(schema_file_path)
+    try:
+        with open(schema_file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Schema metadata file not found.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading schema metadata file: {str(e)}") 
