@@ -126,10 +126,11 @@
               <div class="mb-3">
                 <label for="msgGenMessage" class="form-label">Message</label>
                 <textarea class="form-control" id="msgGenMessage" required></textarea>
+                <button type="button" class="btn btn-secondary mt-2" id="generateSqlBtn">Generate</button>
               </div>
               <div class="mb-3">
                 <label for="msgGenSQL" class="form-label">Generated SQL</label>
-                <textarea class="form-control" id="msgGenSQL" required></textarea>
+                <textarea class="form-control" id="msgGenSQL" required readonly></textarea>
               </div>
               <div id="msgGenMsg" class="text-danger mb-2"></div>
               <button type="submit" class="btn btn-primary">Save</button>
@@ -395,31 +396,71 @@
         });
 
         // Show settings modal
-        document.getElementById('settingsBtn').addEventListener('click', function(e) {
+        document.getElementById('settingsBtn').addEventListener('click', async function(e) {
             e.preventDefault();
-            // Load from localStorage if available
-            document.getElementById('dbServer').value = localStorage.getItem('dbServer') || '';
-            document.getElementById('dbUser').value = localStorage.getItem('dbUser') || '';
-            document.getElementById('dbPassword').value = localStorage.getItem('dbPassword') || '';
-            document.getElementById('geminiModel').value = localStorage.getItem('geminiModel') || 'gemini-2.0-flash';
-            document.getElementById('geminiApiKey').value = localStorage.getItem('geminiApiKey') || '';
+            // Fetch settings from backend API
+            try {
+                const response = await fetch('/api/v1/reports/settings');
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('dbServer').value = data.db_server || '';
+                    document.getElementById('dbUser').value = data.db_user || '';
+                    document.getElementById('dbPassword').value = data.db_password || '';
+                    document.getElementById('geminiModel').value = data.gemini_model || 'gemini-2.0-flash';
+                    document.getElementById('geminiApiKey').value = data.gemini_api_key || '';
+                } else {
+                    // If not found, clear fields
+                    document.getElementById('dbServer').value = '';
+                    document.getElementById('dbUser').value = '';
+                    document.getElementById('dbPassword').value = '';
+                    document.getElementById('geminiModel').value = 'gemini-2.0-flash';
+                    document.getElementById('geminiApiKey').value = '';
+                }
+            } catch (err) {
+                // On error, clear fields
+                document.getElementById('dbServer').value = '';
+                document.getElementById('dbUser').value = '';
+                document.getElementById('dbPassword').value = '';
+                document.getElementById('geminiModel').value = 'gemini-2.0-flash';
+                document.getElementById('geminiApiKey').value = '';
+            }
             document.getElementById('settingsMsg').textContent = '';
             var modal = new bootstrap.Modal(document.getElementById('settingsModal'));
             modal.show();
         });
 
         // Save settings
-        document.getElementById('settingsForm').addEventListener('submit', function(e) {
+        document.getElementById('settingsForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            localStorage.setItem('dbServer', document.getElementById('dbServer').value);
-            localStorage.setItem('dbUser', document.getElementById('dbUser').value);
-            localStorage.setItem('dbPassword', document.getElementById('dbPassword').value);
-            localStorage.setItem('geminiModel', document.getElementById('geminiModel').value);
-            localStorage.setItem('geminiApiKey', document.getElementById('geminiApiKey').value);
-            document.getElementById('settingsMsg').classList.remove('text-danger');
-            document.getElementById('settingsMsg').classList.add('text-success');
-            document.getElementById('settingsMsg').textContent = 'Settings saved!';
-            setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide(); }, 1000);
+            const db_server = document.getElementById('dbServer').value;
+            const db_user = document.getElementById('dbUser').value;
+            const db_password = document.getElementById('dbPassword').value;
+            const gemini_model = document.getElementById('geminiModel').value;
+            const gemini_api_key = document.getElementById('geminiApiKey').value;
+
+            // Save to backend
+            try {
+                const response = await fetch('/api/v1/reports/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        db_server,
+                        db_user,
+                        db_password,
+                        gemini_model,
+                        gemini_api_key
+                    })
+                });
+                if (!response.ok) throw new Error('Failed to save settings to backend');
+                document.getElementById('settingsMsg').classList.remove('text-danger');
+                document.getElementById('settingsMsg').classList.add('text-success');
+                document.getElementById('settingsMsg').textContent = 'Settings saved!';
+                setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide(); }, 1000);
+            } catch (err) {
+                document.getElementById('settingsMsg').classList.remove('text-success');
+                document.getElementById('settingsMsg').classList.add('text-danger');
+                document.getElementById('settingsMsg').textContent = 'Error saving settings: ' + err.message;
+            }
         });
 
         // Function to update schema status badge
@@ -447,6 +488,44 @@
                     updateSchemaStatusBadge();
                 });
         }
+
+        function cleanGeneratedSQL(sql) {
+            // Remove Markdown code block markers (```sql and ```)
+            sql = sql.replace(/```sql|```/gi, '');
+            // Trim leading/trailing whitespace
+            sql = sql.trim();
+            return sql;
+        }
+
+        document.getElementById('generateSqlBtn').addEventListener('click', async function() {
+            const message = document.getElementById('msgGenMessage').value.trim();
+            const msg = document.getElementById('msgGenMsg');
+            msg.textContent = '';
+            if (!message) {
+                msg.textContent = 'Please enter a message.';
+                return;
+            }
+            document.getElementById('generateSqlBtn').disabled = true;
+            msg.textContent = 'Generating SQL...';
+            try {
+                const response = await fetch('/api/v1/reports/generate-sql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to generate SQL');
+                }
+                const data = await response.json();
+                const cleanedSQL = cleanGeneratedSQL(data.generated_sql);
+                document.getElementById('msgGenSQL').value = cleanedSQL;
+                msg.textContent = '';
+            } catch (err) {
+                msg.textContent = 'Error: ' + err.message;
+            } finally {
+                document.getElementById('generateSqlBtn').disabled = false;
+            }
+        });
     </script>
 </body>
 </html> 

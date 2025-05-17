@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
@@ -10,6 +10,7 @@ from app.schemas.settings import SettingsCreate, SettingsResponse
 import pyodbc
 import json
 import os
+import requests
 
 router = APIRouter()
 
@@ -23,6 +24,9 @@ class DBMetaRequest(BaseModel):
     user: str
     password: str
     database: str
+
+class GenerateSQLRequest(BaseModel):
+    message: str
 
 @router.post("/sessions/")
 async def create_session(
@@ -140,6 +144,26 @@ def create_report(report: ReportCreate, db: Session = Depends(get_db)):
     db.refresh(db_report)
     return db_report
 
+@router.get("/settings", response_model=SettingsResponse)
+def get_settings(db: Session = Depends(get_db)):
+    settings = db.query(Settings).first()
+    if not settings:
+        raise HTTPException(status_code=404, detail="Settings not found")
+    return settings
+
+@router.post("/settings", response_model=SettingsResponse)
+def save_settings(settings_in: SettingsCreate, db: Session = Depends(get_db)):
+    settings = db.query(Settings).first()
+    if settings:
+        for field, value in settings_in.dict().items():
+            setattr(settings, field, value)
+    else:
+        settings = Settings(**settings_in.dict())
+        db.add(settings)
+    db.commit()
+    db.refresh(settings)
+    return settings
+
 @router.get("/{report_id}", response_model=ReportSchema)
 def get_report(report_id: int, db: Session = Depends(get_db)):
     report = db.query(Report).filter(Report.id == report_id).first()
@@ -188,26 +212,6 @@ def add_message(report_id: int, msg: ChatMessageCreate, db: Session = Depends(ge
     db.commit()
     db.refresh(chat_msg)
     return {"message": "Saved", "id": chat_msg.Id}
-
-@router.get("/settings", response_model=SettingsResponse)
-def get_settings(db: Session = Depends(get_db)):
-    settings = db.query(Settings).first()
-    if not settings:
-        raise HTTPException(status_code=404, detail="Settings not found")
-    return settings
-
-@router.post("/settings", response_model=SettingsResponse)
-def save_settings(settings_in: SettingsCreate, db: Session = Depends(get_db)):
-    settings = db.query(Settings).first()
-    if settings:
-        for field, value in settings_in.dict().items():
-            setattr(settings, field, value)
-    else:
-        settings = Settings(**settings_in.dict())
-        db.add(settings)
-    db.commit()
-    db.refresh(settings)
-    return settings
 
 @router.post("/db-metadata")
 def get_db_metadata(req: DBMetaRequest):
@@ -308,4 +312,39 @@ def get_db_metadata_file():
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Schema metadata file not found.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading schema metadata file: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error reading schema metadata file: {str(e)}")
+
+@router.post("/generate-sql")
+def generate_sql(req: GenerateSQLRequest, db: Session = Depends(get_db)):
+    settings = db.query(Settings).first()
+    if not settings or not settings.gemini_api_key or not settings.gemini_model:
+        raise HTTPException(status_code=400, detail="Gemini API settings not configured.")
+    api_key = settings.gemini_api_key
+    model = settings.gemini_model
+    # Load schema from file
+    schema_file_path = os.path.join(os.path.dirname(__file__), '../../schemas/schema_metadata.json')
+    schema_file_path = os.path.normpath(schema_file_path)
+    try:
+        with open(schema_file_path, 'r', encoding='utf-8') as f:
+            db_schema = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not load schema metadata: {str(e)}")
+    # Compose prompt
+    prompt = (
+        "You are an expert SQL generator. Given this database schema (in JSON) and a user request, "
+        "write a valid SQL query using the schema. Only output the SQL.\n"
+        f"Schema: {db_schema}\n"
+        f"User request: {req.message}\n"
+        "SQL:"
+    )
+    # Call Gemini API (adjust endpoint as needed)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+    response = requests.post(url, json=payload)
+    if not response.ok:
+        raise HTTPException(status_code=500, detail="Gemini API error: " + response.text)
+    data = response.json()
+    generated_sql = data["candidates"][0]["content"]["parts"][0]["text"]
+    return {"generated_sql": generated_sql} 
