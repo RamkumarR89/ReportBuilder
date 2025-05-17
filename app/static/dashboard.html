@@ -22,7 +22,7 @@
                         <a class="nav-link" href="#">Report List</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#">Create Report</a>
+                        <a class="nav-link" href="#" id="createReportBtn">Create Report</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#">Add Measure</a>
@@ -39,5 +39,82 @@
         <h1 class="mt-4">Welcome to your Dashboard!</h1>
         <p>You are logged in.</p>
     </div>
+
+    <!-- Create Report Modal -->
+    <div class="modal fade" id="createReportModal" tabindex="-1" aria-labelledby="createReportModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="createReportModalLabel">Create Report</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="reportForm">
+              <div class="mb-3">
+                <label for="reportName" class="form-label">Report Name</label>
+                <input type="text" class="form-control" id="reportName" required>
+              </div>
+              <div class="mb-3">
+                <label for="reportDesc" class="form-label">Description</label>
+                <textarea class="form-control" id="reportDesc" required></textarea>
+              </div>
+              <div id="reportMsg" class="text-danger mb-2"></div>
+              <button type="submit" class="btn btn-primary">Save Report</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Show modal on Create Report click
+        document.getElementById('createReportBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            var modal = new bootstrap.Modal(document.getElementById('createReportModal'));
+            document.getElementById('reportForm').reset();
+            document.getElementById('reportMsg').textContent = '';
+            modal.show();
+        });
+
+        // Handle report form submit
+        document.getElementById('reportForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const name = document.getElementById('reportName').value.trim();
+            const description = document.getElementById('reportDesc').value.trim();
+            const msg = document.getElementById('reportMsg');
+            msg.textContent = '';
+            if (!name || !description) {
+                msg.textContent = 'Both fields are required.';
+                return;
+            }
+            try {
+                const response = await fetch('/api/v1/reports/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: name, description })
+                });
+                if (response.ok) {
+                    msg.classList.remove('text-danger');
+                    msg.classList.add('text-success');
+                    msg.textContent = 'Report created successfully!';
+                    setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('createReportModal')).hide(); }, 1000);
+                } else {
+                    const data = await response.json();
+                    msg.classList.remove('text-success');
+                    msg.classList.add('text-danger');
+                    if (data.detail && data.detail.includes('already exists')) {
+                        msg.textContent = 'This report already exists.';
+                    } else {
+                        msg.textContent = data.detail || 'Failed to create report.';
+                    }
+                }
+            } catch (err) {
+                msg.classList.remove('text-success');
+                msg.classList.add('text-danger');
+                msg.textContent = 'Network error.';
+            }
+        });
+    </script>
 </body>
 </html> 

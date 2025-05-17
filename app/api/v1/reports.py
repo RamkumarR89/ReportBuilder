@@ -114,7 +114,11 @@ def get_reports(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=ReportSchema)
 def create_report(report: ReportCreate, db: Session = Depends(get_db)):
-    db_report = Report(**report.model_dump())
+    # Check if report name already exists
+    existing = db.query(Report).filter(Report.title == report.title).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="This report already exists.")
+    db_report = Report(**report.dict())
     db.add(db_report)
     db.commit()
     db.refresh(db_report)
