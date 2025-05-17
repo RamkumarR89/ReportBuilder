@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
-from app.models.models import ChatSession, ChartConfiguration, ChatMessage, SessionWorkflow
+from app.models.models import ChatSession, ChartConfiguration, ChatMessage, SessionWorkflow, Report
 from datetime import datetime
+from app.schemas.report import Report as ReportSchema, ReportCreate
 
 router = APIRouter()
 
@@ -104,4 +105,24 @@ async def delete_session(
     db.delete(session)
     db.commit()
     
-    return {"message": "Session deleted successfully"} 
+    return {"message": "Session deleted successfully"}
+
+@router.get("/", response_model=List[ReportSchema])
+def get_reports(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    reports = db.query(Report).offset(skip).limit(limit).all()
+    return reports
+
+@router.post("/", response_model=ReportSchema)
+def create_report(report: ReportCreate, db: Session = Depends(get_db)):
+    db_report = Report(**report.model_dump())
+    db.add(db_report)
+    db.commit()
+    db.refresh(db_report)
+    return db_report
+
+@router.get("/{report_id}", response_model=ReportSchema)
+def get_report(report_id: int, db: Session = Depends(get_db)):
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report 
