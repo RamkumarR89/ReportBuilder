@@ -19,7 +19,7 @@
                         <a class="nav-link active" aria-current="page" href="/static/dashboard.html">Home</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#">Report List</a>
+                        <a class="nav-link" href="#" id="reportListBtn">Report List</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" id="createReportBtn">Create Report</a>
@@ -38,6 +38,22 @@
     <div class="container">
         <h1 class="mt-4">Welcome to your Dashboard!</h1>
         <p>You are logged in.</p>
+        <div id="reportListSection" style="display:none;">
+            <h2 class="mt-4">Report List</h2>
+            <table class="table table-bordered mt-3">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Description</th>
+                        <th>Created At</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="reportListTable"></tbody>
+            </table>
+            <div id="reportListMsg" class="text-danger"></div>
+        </div>
     </div>
 
     <!-- Create Report Modal -->
@@ -60,6 +76,33 @@
               </div>
               <div id="reportMsg" class="text-danger mb-2"></div>
               <button type="submit" class="btn btn-primary">Save Report</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Report Modal -->
+    <div class="modal fade" id="editReportModal" tabindex="-1" aria-labelledby="editReportModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="editReportModalLabel">Edit Report</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="editReportForm">
+              <input type="hidden" id="editReportId">
+              <div class="mb-3">
+                <label for="editReportName" class="form-label">Report Name</label>
+                <input type="text" class="form-control" id="editReportName" required>
+              </div>
+              <div class="mb-3">
+                <label for="editReportDesc" class="form-label">Description</label>
+                <textarea class="form-control" id="editReportDesc" required></textarea>
+              </div>
+              <div id="editReportMsg" class="text-danger mb-2"></div>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
             </form>
           </div>
         </div>
@@ -108,6 +151,121 @@
                     } else {
                         msg.textContent = data.detail || 'Failed to create report.';
                     }
+                }
+            } catch (err) {
+                msg.classList.remove('text-success');
+                msg.classList.add('text-danger');
+                msg.textContent = 'Network error.';
+            }
+        });
+
+        // Show report list on menu click
+        document.getElementById('reportListBtn').addEventListener('click', async function(e) {
+            e.preventDefault();
+            document.getElementById('reportListSection').style.display = '';
+            document.getElementById('reportListMsg').textContent = '';
+            const tableBody = document.getElementById('reportListTable');
+            tableBody.innerHTML = '';
+            try {
+                const response = await fetch('/api/v1/reports/');
+                if (!response.ok) throw new Error('Failed to fetch reports');
+                const reports = await response.json();
+                let found = false;
+                reports.forEach(report => {
+                    if (!report.is_deleted) {
+                        found = true;
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td><a href="#" class="edit-report-link" data-id="${report.id}" data-title="${encodeURIComponent(report.title)}" data-description="${encodeURIComponent(report.description)}">${report.id}</a></td>
+                            <td>${report.title}</td>
+                            <td>${report.description}</td>
+                            <td>${new Date(report.created_at).toLocaleString()}</td>
+                            <td>
+                                <a href="#" class="delete-report-link text-danger me-2" data-id="${report.id}">Delete</a>
+                                <a href="#" class="msg-gen-link me-2" data-id="${report.id}">MessageWithGenSQL</a>
+                                <a href="#" class="chart-config-link me-2" data-id="${report.id}">ChartConfiguration</a>
+                                <a href="#" class="add-measure-link me-2" data-id="${report.id}">AddMeasures</a>
+                                <a href="#" class="publish-report-link" data-id="${report.id}">PublishReport</a>
+                            </td>
+                        `;
+                        tableBody.appendChild(row);
+                    }
+                });
+                if (!found) {
+                    document.getElementById('reportListMsg').textContent = 'No reports found.';
+                }
+            } catch (err) {
+                document.getElementById('reportListMsg').textContent = 'Error loading reports.';
+            }
+
+            // Add click listeners for edit links
+            document.querySelectorAll('.edit-report-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const id = this.getAttribute('data-id');
+                    const title = decodeURIComponent(this.getAttribute('data-title'));
+                    const description = decodeURIComponent(this.getAttribute('data-description'));
+                    document.getElementById('editReportId').value = id;
+                    document.getElementById('editReportName').value = title;
+                    document.getElementById('editReportDesc').value = description;
+                    document.getElementById('editReportMsg').textContent = '';
+                    var modal = new bootstrap.Modal(document.getElementById('editReportModal'));
+                    modal.show();
+                });
+            });
+
+            // Add click listeners for delete links
+            document.querySelectorAll('.delete-report-link').forEach(link => {
+                link.addEventListener('click', async function(e) {
+                    e.preventDefault();
+                    if (!confirm('Are you sure you want to delete this report?')) return;
+                    const id = this.getAttribute('data-id');
+                    try {
+                        const response = await fetch(`/api/v1/reports/${id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ is_deleted: true })
+                        });
+                        if (response.ok) {
+                            document.getElementById('reportListBtn').click();
+                        } else {
+                            alert('Failed to delete report.');
+                        }
+                    } catch (err) {
+                        alert('Network error.');
+                    }
+                });
+            });
+        });
+
+        // Handle edit report form submit
+        document.getElementById('editReportForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const id = document.getElementById('editReportId').value;
+            const title = document.getElementById('editReportName').value.trim();
+            const description = document.getElementById('editReportDesc').value.trim();
+            const msg = document.getElementById('editReportMsg');
+            msg.textContent = '';
+            if (!title || !description) {
+                msg.textContent = 'Both fields are required.';
+                return;
+            }
+            try {
+                const response = await fetch(`/api/v1/reports/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ report_name: title, report_desc: description })
+                });
+                if (response.ok) {
+                    msg.classList.remove('text-danger');
+                    msg.classList.add('text-success');
+                    msg.textContent = 'Report updated successfully!';
+                    setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('editReportModal')).hide(); document.getElementById('reportListBtn').click(); }, 1000);
+                } else {
+                    const data = await response.json();
+                    msg.classList.remove('text-success');
+                    msg.classList.add('text-danger');
+                    msg.textContent = data.detail || 'Failed to update report.';
                 }
             } catch (err) {
                 msg.classList.remove('text-success');

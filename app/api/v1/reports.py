@@ -109,7 +109,7 @@ async def delete_session(
 
 @router.get("/", response_model=List[ReportSchema])
 def get_reports(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    reports = db.query(Report).offset(skip).limit(limit).all()
+    reports = db.query(Report).filter(Report.is_deleted == False).offset(skip).limit(limit).all()
     return reports
 
 @router.post("/", response_model=ReportSchema)
@@ -129,4 +129,21 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
     report = db.query(Report).filter(Report.id == report_id).first()
     if report is None:
         raise HTTPException(status_code=404, detail="Report not found")
+    return report
+
+@router.put("/{report_id}", response_model=ReportSchema)
+def update_report(report_id: int, report_name: str = None, report_desc: str = None, db: Session = Depends(get_db)):
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if report_name is not None:
+        # Check for unique name
+        existing = db.query(Report).filter(Report.title == report_name, Report.id != report_id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="This report name already exists.")
+        report.title = report_name
+    if report_desc is not None:
+        report.description = report_desc
+    db.commit()
+    db.refresh(report)
     return report 
