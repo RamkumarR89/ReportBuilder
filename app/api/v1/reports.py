@@ -11,6 +11,7 @@ import pyodbc
 import json
 import os
 import requests
+import logging
 
 router = APIRouter()
 
@@ -67,6 +68,11 @@ class ReportChartConfigResponse(BaseModel):
             'created_at': 'CreatedAt',
             'updated_at': 'UpdatedAt',
         }
+
+class ReportUpdate(BaseModel):
+    report_name: str = None
+    report_desc: str = None
+    is_deleted: bool = None
 
 @router.post("/sessions/")
 async def create_session(
@@ -220,6 +226,20 @@ def get_chart_types(db: Session = Depends(get_db)):
         for ct in chart_types
     ]
 
+@router.get("/workflow-status")
+def get_workflow_status(db: Session = Depends(get_db)):
+    workflows = db.query(ReportWorkflow).all()
+    return [
+        {
+            "report_id": w.ReportId,
+            "has_report_name": w.HasReportName,
+            "has_message_query": w.HasMessageQuery,
+            "has_chart_configured": w.HasChartConfigured,
+            "is_published": w.IsPublished
+        }
+        for w in workflows
+    ]
+
 @router.get("/{report_id}", response_model=ReportSchema)
 def get_report(report_id: int, db: Session = Depends(get_db)):
     report = db.query(Report).filter(Report.id == report_id).first()
@@ -228,18 +248,20 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
     return report
 
 @router.put("/{report_id}", response_model=ReportSchema)
-def update_report(report_id: int, report_name: str = None, report_desc: str = None, db: Session = Depends(get_db)):
+def update_report(report_id: int, update: ReportUpdate, db: Session = Depends(get_db)):
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
-    if report_name is not None:
+    if update.report_name is not None:
         # Check for unique name
-        existing = db.query(Report).filter(Report.title == report_name, Report.id != report_id).first()
+        existing = db.query(Report).filter(Report.title == update.report_name, Report.id != report_id).first()
         if existing:
             raise HTTPException(status_code=400, detail="This report name already exists.")
-        report.title = report_name
-    if report_desc is not None:
-        report.description = report_desc
+        report.title = update.report_name
+    if update.report_desc is not None:
+        report.description = update.report_desc
+    if update.is_deleted is not None:
+        report.is_deleted = update.is_deleted
     db.commit()
     db.refresh(report)
     return report

@@ -291,13 +291,26 @@
             const tableBody = document.getElementById('reportListTable');
             tableBody.innerHTML = '';
             try {
-                const response = await fetch('/api/v1/reports/');
-                if (!response.ok) throw new Error('Failed to fetch reports');
-                const reports = await response.json();
+                const [reports, workflowStatus] = await Promise.all([
+                    fetch('/api/v1/reports/').then(res => res.json()),
+                    fetch('/api/v1/reports/workflow-status').then(res => res.json())
+                ]);
                 let found = false;
                 reports.forEach(report => {
                     if (!report.is_deleted) {
                         found = true;
+                        const workflow = workflowStatus.find(w => w.report_id === report.id);
+                        // Button logic
+                        let msgBtnClass = 'btn btn-link msg-gen-link me-2';
+                        let msgBtnVisible = workflow && workflow.has_report_name;
+                        if (workflow && workflow.has_message_query) msgBtnClass += ' btn-success text-white';
+                        let chartBtnClass = 'btn btn-link chart-config-link me-2';
+                        let chartBtnVisible = workflow && workflow.has_report_name && workflow.has_message_query;
+                        if (workflow && workflow.has_chart_configured) chartBtnClass += ' btn-success text-white';
+                        let pubBtnClass = 'btn btn-link publish-report-link';
+                        let pubBtnVisible = workflow && workflow.has_report_name && workflow.has_message_query && workflow.has_chart_configured;
+                        if (workflow && workflow.is_published) pubBtnClass += ' btn-success text-white';
+                        // Render row
                         const row = document.createElement('tr');
                         row.innerHTML = `
                             <td><a href="#" class="edit-report-link" data-id="${report.id}" data-title="${encodeURIComponent(report.title)}" data-description="${encodeURIComponent(report.description)}">${report.id}</a></td>
@@ -306,10 +319,10 @@
                             <td>${new Date(report.created_at).toLocaleString()}</td>
                             <td>
                                 <a href="#" class="delete-report-link text-danger me-2" data-id="${report.id}">Delete</a>
-                                <a href="#" class="msg-gen-link me-2" data-id="${report.id}">MessageWithGenSQL</a>
-                                <a href="#" class="chart-config-link me-2" data-id="${report.id}">ChartConfiguration</a>
+                                ${msgBtnVisible ? `<a href="#" class="${msgBtnClass}" data-id="${report.id}">MessageWithGenSQL</a>` : ''}
+                                ${chartBtnVisible ? `<a href="#" class="${chartBtnClass}" data-id="${report.id}">ChartConfiguration</a>` : ''}
                                 <a href="#" class="add-measure-link me-2" data-id="${report.id}">AddMeasures</a>
-                                <a href="#" class="publish-report-link" data-id="${report.id}">PublishReport</a>
+                                ${pubBtnVisible ? `<a href="#" class="${pubBtnClass}" data-id="${report.id}">PublishReport</a>` : ''}
                             </td>
                         `;
                         tableBody.appendChild(row);
@@ -344,6 +357,7 @@
                     e.preventDefault();
                     if (!confirm('Are you sure you want to delete this report?')) return;
                     const id = this.getAttribute('data-id');
+                    console.log('Attempting to delete report with id:', id); // Debug log
                     try {
                         const response = await fetch(`/api/v1/reports/${id}`, {
                             method: 'PUT',
@@ -351,11 +365,15 @@
                             body: JSON.stringify({ is_deleted: true })
                         });
                         if (response.ok) {
+                            console.log('Delete API call succeeded'); // Debug log
                             document.getElementById('reportListBtn').click();
                         } else {
+                            const data = await response.json();
+                            console.log('Delete API call failed:', data); // Debug log
                             alert('Failed to delete report.');
                         }
                     } catch (err) {
+                        console.log('Network error:', err); // Debug log
                         alert('Network error.');
                     }
                 });
