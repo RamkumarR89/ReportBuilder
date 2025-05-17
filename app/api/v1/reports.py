@@ -1,12 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
-from app.models.models import ChatSession, ChartConfiguration, ChatMessage, SessionWorkflow, Report
+from app.models.models import ChatSession, ChartConfiguration, ChatMessage, SessionWorkflow, Report, Settings
 from datetime import datetime
 from app.schemas.report import Report as ReportSchema, ReportCreate
+from pydantic import BaseModel
+from app.schemas.settings import SettingsCreate, SettingsResponse
 
 router = APIRouter()
+
+class ChatMessageCreate(BaseModel):
+    message: str
+    generated_sql: str
+    role: str = "admin"
 
 @router.post("/sessions/")
 async def create_session(
@@ -146,4 +153,49 @@ def update_report(report_id: int, report_name: str = None, report_desc: str = No
         report.description = report_desc
     db.commit()
     db.refresh(report)
-    return report 
+    return report
+
+@router.post("/{report_id}/messages")
+def add_message(report_id: int, msg: ChatMessageCreate, db: Session = Depends(get_db)):
+    # Find the ChatSession for this report
+    session = db.query(ChatSession).filter(ChatSession.ReportName == None, ChatSession.Id == report_id).first()
+    if not session:
+        # Try to find by report name if needed
+        session = db.query(ChatSession).filter(ChatSession.ReportName == None).first()
+        if not session:
+            # Or create a new session if not found
+            session = ChatSession(UserId="admin", CreatedAt=datetime.utcnow(), ReportName=None, IsActive=True)
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+    chat_msg = ChatMessage(
+        ChatSessionId=session.Id,
+        Message=msg.message,
+        Role=msg.role,
+        CreatedAt=datetime.utcnow(),
+        GeneratedSql=msg.generated_sql
+    )
+    db.add(chat_msg)
+    db.commit()
+    db.refresh(chat_msg)
+    return {"message": "Saved", "id": chat_msg.Id}
+
+@router.get("/settings", response_model=SettingsResponse)
+def get_settings(db: Session = Depends(get_db)):
+    settings = db.query(Settings).first()
+    if not settings:
+        raise HTTPException(status_code=404, detail="Settings not found")
+    return settings
+
+@router.post("/settings", response_model=SettingsResponse)
+def save_settings(settings_in: SettingsCreate, db: Session = Depends(get_db)):
+    settings = db.query(Settings).first()
+    if settings:
+        for field, value in settings_in.dict().items():
+            setattr(settings, field, value)
+    else:
+        settings = Settings(**settings_in.dict())
+        db.add(settings)
+    db.commit()
+    db.refresh(settings)
+    return settings 

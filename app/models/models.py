@@ -108,3 +108,12 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
+
+class Settings(Base):
+    __tablename__ = "settings"
+    id = Column(Integer, primary_key=True, index=True)
+    db_server = Column(String(255), nullable=True)
+    db_user = Column(String(255), nullable=True)
+    db_password = Column(String(255), nullable=True)
+    gemini_model = Column(String(255), nullable=True)
+    gemini_api_key = Column(String(255), nullable=True)

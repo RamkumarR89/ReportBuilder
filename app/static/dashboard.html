@@ -30,6 +30,9 @@
                     <li class="nav-item">
                         <a class="nav-link" href="#">Chart Configuration</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" id="settingsBtn">Settings</a>
+                    </li>
                 </ul>
                 <a href="/static/login.html" class="btn btn-outline-secondary">Logout</a>
             </div>
@@ -104,6 +107,73 @@
               <div id="editReportMsg" class="text-danger mb-2"></div>
               <button type="submit" class="btn btn-primary">Save Changes</button>
             </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MessageWithGenSQL Modal -->
+    <div class="modal fade" id="msgGenModal" tabindex="-1" aria-labelledby="msgGenModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="msgGenModalLabel">Add Message & Generated SQL</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="msgGenForm">
+              <input type="hidden" id="msgGenReportId">
+              <div class="mb-3">
+                <label for="msgGenMessage" class="form-label">Message</label>
+                <textarea class="form-control" id="msgGenMessage" required></textarea>
+              </div>
+              <div class="mb-3">
+                <label for="msgGenSQL" class="form-label">Generated SQL</label>
+                <textarea class="form-control" id="msgGenSQL" required></textarea>
+              </div>
+              <div id="msgGenMsg" class="text-danger mb-2"></div>
+              <button type="submit" class="btn btn-primary">Save</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="settingsModalLabel">Settings</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="settingsForm">
+              <div class="mb-3">
+                <label for="dbServer" class="form-label">DB Server Name</label>
+                <input type="text" class="form-control" id="dbServer">
+              </div>
+              <div class="mb-3">
+                <label for="dbUser" class="form-label">DB User</label>
+                <input type="text" class="form-control" id="dbUser">
+              </div>
+              <div class="mb-3">
+                <label for="dbPassword" class="form-label">DB Password</label>
+                <input type="password" class="form-control" id="dbPassword">
+              </div>
+              <hr>
+              <div class="mb-3">
+                <label for="geminiModel" class="form-label">Gemini Model</label>
+                <input type="text" class="form-control" id="geminiModel" value="gemini-2.0-flash">
+              </div>
+              <div class="mb-3">
+                <label for="geminiApiKey" class="form-label">Gemini API Key</label>
+                <input type="text" class="form-control" id="geminiApiKey">
+              </div>
+              <div id="settingsMsg" class="text-danger mb-2"></div>
+              <button type="submit" class="btn btn-primary">Save Settings</button>
+            </form>
+            
           </div>
         </div>
       </div>
@@ -236,9 +306,23 @@
                     }
                 });
             });
+
+            // Add click listeners for MessageWithGenSQL links
+            document.querySelectorAll('.msg-gen-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const id = this.getAttribute('data-id');
+                    document.getElementById('msgGenReportId').value = id;
+                    document.getElementById('msgGenMessage').value = '';
+                    document.getElementById('msgGenSQL').value = '';
+                    document.getElementById('msgGenMsg').textContent = '';
+                    var modal = new bootstrap.Modal(document.getElementById('msgGenModal'));
+                    modal.show();
+                });
+            });
         });
 
-        // Handle edit report form submit
+        // Handle report form submit
         document.getElementById('editReportForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const id = document.getElementById('editReportId').value;
@@ -272,6 +356,70 @@
                 msg.classList.add('text-danger');
                 msg.textContent = 'Network error.';
             }
+        });
+
+        // Handle MessageWithGenSQL form submit
+        document.getElementById('msgGenForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const reportId = document.getElementById('msgGenReportId').value;
+            const message = document.getElementById('msgGenMessage').value.trim();
+            const generatedSql = document.getElementById('msgGenSQL').value.trim();
+            const msg = document.getElementById('msgGenMsg');
+            msg.textContent = '';
+            if (!message || !generatedSql) {
+                msg.textContent = 'Both fields are required.';
+                return;
+            }
+            try {
+                const response = await fetch('/api/v1/reports/' + reportId + '/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message, generated_sql: generatedSql, role: 'admin' })
+                });
+                if (response.ok) {
+                    msg.classList.remove('text-danger');
+                    msg.classList.add('text-success');
+                    msg.textContent = 'Message saved!';
+                    setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('msgGenModal')).hide(); }, 1000);
+                } else {
+                    const data = await response.json();
+                    msg.classList.remove('text-success');
+                    msg.classList.add('text-danger');
+                    msg.textContent = data.detail || 'Failed to save message.';
+                }
+            } catch (err) {
+                msg.classList.remove('text-success');
+                msg.classList.add('text-danger');
+                msg.textContent = 'Network error.';
+            }
+        });
+
+        // Show settings modal
+        document.getElementById('settingsBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            // Load from localStorage if available
+            document.getElementById('dbServer').value = localStorage.getItem('dbServer') || '';
+            document.getElementById('dbUser').value = localStorage.getItem('dbUser') || '';
+            document.getElementById('dbPassword').value = localStorage.getItem('dbPassword') || '';
+            document.getElementById('geminiModel').value = localStorage.getItem('geminiModel') || 'gemini-2.0-flash';
+            document.getElementById('geminiApiKey').value = localStorage.getItem('geminiApiKey') || '';
+            document.getElementById('settingsMsg').textContent = '';
+            var modal = new bootstrap.Modal(document.getElementById('settingsModal'));
+            modal.show();
+        });
+
+        // Save settings
+        document.getElementById('settingsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            localStorage.setItem('dbServer', document.getElementById('dbServer').value);
+            localStorage.setItem('dbUser', document.getElementById('dbUser').value);
+            localStorage.setItem('dbPassword', document.getElementById('dbPassword').value);
+            localStorage.setItem('geminiModel', document.getElementById('geminiModel').value);
+            localStorage.setItem('geminiApiKey', document.getElementById('geminiApiKey').value);
+            document.getElementById('settingsMsg').classList.remove('text-danger');
+            document.getElementById('settingsMsg').classList.add('text-success');
+            document.getElementById('settingsMsg').textContent = 'Settings saved!';
+            setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide(); }, 1000);
         });
     </script>
 </body>
