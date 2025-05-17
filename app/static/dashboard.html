@@ -265,7 +265,10 @@
                     msg.classList.remove('text-danger');
                     msg.classList.add('text-success');
                     msg.textContent = 'Report created successfully!';
-                    setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('createReportModal')).hide(); }, 1000);
+                    setTimeout(() => {
+                        bootstrap.Modal.getInstance(document.getElementById('createReportModal')).hide();
+                        document.getElementById('reportListBtn').click();
+                    }, 1000);
                 } else {
                     const data = await response.json();
                     msg.classList.remove('text-success');
@@ -524,7 +527,10 @@
                     msg.classList.remove('text-danger');
                     msg.classList.add('text-success');
                     msg.textContent = 'Message saved!';
-                    setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('msgGenModal')).hide(); }, 1000);
+                    setTimeout(() => {
+                        bootstrap.Modal.getInstance(document.getElementById('msgGenModal')).hide();
+                        document.getElementById('reportListBtn').click();
+                    }, 1000);
                 } else {
                     const data = await response.json();
                     msg.classList.remove('text-success');
@@ -708,7 +714,10 @@
                 document.getElementById('chartConfigMsg').classList.remove('text-danger');
                 document.getElementById('chartConfigMsg').classList.add('text-success');
                 document.getElementById('chartConfigMsg').textContent = 'Chart configuration saved!';
-                setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('chartConfigModal')).hide(); }, 1000);
+                setTimeout(() => {
+                    bootstrap.Modal.getInstance(document.getElementById('chartConfigModal')).hide();
+                    document.getElementById('reportListBtn').click();
+                }, 1000);
             } else {
                 const data = await res.json();
                 document.getElementById('chartConfigMsg').classList.remove('text-success');
