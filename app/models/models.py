@@ -3,6 +3,24 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
 from app.core.database import Base
+from enum import Enum
+
+class ChartTypeEnum(str, Enum):
+    Line = 'Line'
+    Bar = 'Bar'
+    Pie = 'Pie'
+    Scatter = 'Scatter'
+    Area = 'Area'
+    Column = 'Column'
+    Bubble = 'Bubble'
+    Radar = 'Radar'
+    HeatMap = 'HeatMap'
+    BoxPlot = 'BoxPlot'
+    Funnel = 'Funnel'
+    Gauge = 'Gauge'
+    Waterfall = 'Waterfall'
+    Candlestick = 'Candlestick'
+    TreeMap = 'TreeMap'
 
 class ChatSession(Base):
     __tablename__ = "ChatSessions"
@@ -127,3 +145,18 @@ class ReportMessageSQL(Base):
     Role = Column(String(50), nullable=False)
     CreatedAt = Column(DateTime, nullable=False, default=datetime.utcnow)
     is_deleted = Column(Boolean, default=False, nullable=False)
+
+class ReportChartConfiguration(Base):
+    __tablename__ = "ReportChartConfiguration"
+    Id = Column(Integer, primary_key=True, autoincrement=True)
+    ReportId = Column(Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
+    ChartTypeId = Column(Integer, ForeignKey("ChartTypes.Id"), nullable=False)
+    XAxisField = Column(String(100))
+    YAxisField = Column(String(100))
+    SeriesField = Column(String(100))
+    SizeField = Column(String(100))
+    ColorField = Column(String(100))
+    OptionsJson = Column(Text)
+    FiltersJson = Column(Text)
+    CreatedAt = Column(DateTime, default=datetime.utcnow)
+    UpdatedAt = Column(DateTime, onupdate=datetime.utcnow)

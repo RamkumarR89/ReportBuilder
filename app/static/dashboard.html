@@ -181,6 +181,58 @@
       </div>
     </div>
 
+    <!-- Chart Configuration Modal -->
+    <div class="modal fade" id="chartConfigModal" tabindex="-1" aria-labelledby="chartConfigModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="chartConfigModalLabel">Chart Configuration</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="chartConfigForm">
+              <input type="hidden" id="chartConfigReportId">
+              <input type="hidden" id="chartConfigId">
+              <div class="mb-3">
+                <label for="chartType" class="form-label">Chart Type</label>
+                <select class="form-control" id="chartType" required></select>
+              </div>
+              <div class="mb-3">
+                <label for="xAxisField" class="form-label">X Axis</label>
+                <input type="text" class="form-control" id="xAxisField" required>
+              </div>
+              <div class="mb-3">
+                <label for="yAxisField" class="form-label">Y Axis</label>
+                <input type="text" class="form-control" id="yAxisField" required>
+              </div>
+              <div class="mb-3">
+                <label for="seriesField" class="form-label">Series Field</label>
+                <input type="text" class="form-control" id="seriesField">
+              </div>
+              <div class="mb-3">
+                <label for="sizeField" class="form-label">Size Field</label>
+                <input type="text" class="form-control" id="sizeField">
+              </div>
+              <div class="mb-3">
+                <label for="colorField" class="form-label">Color Field</label>
+                <input type="text" class="form-control" id="colorField">
+              </div>
+              <div class="mb-3">
+                <label for="optionsJson" class="form-label">Options (JSON)</label>
+                <textarea class="form-control" id="optionsJson"></textarea>
+              </div>
+              <div class="mb-3">
+                <label for="filtersJson" class="form-label">Filters (JSON)</label>
+                <textarea class="form-control" id="filtersJson"></textarea>
+              </div>
+              <div id="chartConfigMsg" class="text-danger mb-2"></div>
+              <button type="submit" class="btn btn-primary">Save</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Show modal on Create Report click
@@ -329,6 +381,51 @@
                             }
                         });
                     var modal = new bootstrap.Modal(document.getElementById('msgGenModal'));
+                    modal.show();
+                });
+            });
+
+            // Add click listeners for Chart Configuration links
+            document.querySelectorAll('.chart-config-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const reportId = this.getAttribute('data-id');
+                    document.getElementById('chartConfigReportId').value = reportId;
+                    document.getElementById('chartConfigId').value = '';
+                    document.getElementById('chartConfigMsg').textContent = '';
+                    // Fetch chart types
+                    fetch('/api/v1/reports/chart-types')
+                        .then(res => res.json())
+                        .then(types => {
+                            const select = document.getElementById('chartType');
+                            select.innerHTML = '';
+                            types.forEach(t => {
+                                select.innerHTML += `<option value="${t.id}">${t.name} - ${t.description}</option>`;
+                            });
+                        });
+                    // Fetch existing config for this report
+                    fetch(`/api/v1/reports/${reportId}/chart-configurations`)
+                        .then(res => {
+                            if (res.ok) return res.json();
+                            return null;
+                        })
+                        .then(config => {
+                            if (config) {
+                                document.getElementById('chartConfigId').value = config.Id;
+                                document.getElementById('chartType').value = config.ChartTypeId;
+                                document.getElementById('xAxisField').value = config.XAxisField || '';
+                                document.getElementById('yAxisField').value = config.YAxisField || '';
+                                document.getElementById('seriesField').value = config.SeriesField || '';
+                                document.getElementById('sizeField').value = config.SizeField || '';
+                                document.getElementById('colorField').value = config.ColorField || '';
+                                document.getElementById('optionsJson').value = config.OptionsJson || '';
+                                document.getElementById('filtersJson').value = config.FiltersJson || '';
+                            } else {
+                                document.getElementById('chartConfigForm').reset();
+                                document.getElementById('chartConfigId').value = '';
+                            }
+                        });
+                    var modal = new bootstrap.Modal(document.getElementById('chartConfigModal'));
                     modal.show();
                 });
             });
@@ -535,6 +632,63 @@
                 msg.textContent = 'Error: ' + err.message;
             } finally {
                 document.getElementById('generateSqlBtn').disabled = false;
+            }
+        });
+
+        // Handle Chart Config form submit
+        document.getElementById('chartConfigForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const reportId = document.getElementById('chartConfigReportId').value;
+            const configId = document.getElementById('chartConfigId').value;
+            const chartTypeId = document.getElementById('chartType').value;
+            const xAxis = document.getElementById('xAxisField').value;
+            const yAxis = document.getElementById('yAxisField').value;
+            const seriesField = document.getElementById('seriesField').value;
+            const sizeField = document.getElementById('sizeField').value;
+            const colorField = document.getElementById('colorField').value;
+            const optionsJson = document.getElementById('optionsJson').value;
+            const filtersJson = document.getElementById('filtersJson').value;
+            const payload = {
+                chart_type_id: parseInt(chartTypeId),
+                x_axis_field: xAxis,
+                y_axis_field: yAxis,
+                series_field: seriesField,
+                size_field: sizeField,
+                color_field: colorField,
+                options_json: optionsJson,
+                filters_json: filtersJson
+            };
+            let url = `/api/v1/reports/${reportId}/chart-configurations`;
+            let method = 'POST';
+            if (configId && configId !== 'undefined') {
+                url += `/${configId}`;
+                method = 'PUT';
+            }
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                document.getElementById('chartConfigMsg').classList.remove('text-danger');
+                document.getElementById('chartConfigMsg').classList.add('text-success');
+                document.getElementById('chartConfigMsg').textContent = 'Chart configuration saved!';
+                setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('chartConfigModal')).hide(); }, 1000);
+            } else {
+                const data = await res.json();
+                document.getElementById('chartConfigMsg').classList.remove('text-success');
+                document.getElementById('chartConfigMsg').classList.add('text-danger');
+                let msg = 'Failed to save chart configuration.';
+                if (data.detail) {
+                    if (typeof data.detail === 'string') {
+                        msg = data.detail;
+                    } else if (Array.isArray(data.detail)) {
+                        msg = data.detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+                    } else if (typeof data.detail === 'object') {
+                        msg = JSON.stringify(data.detail);
+                    }
+                }
+                document.getElementById('chartConfigMsg').textContent = msg;
             }
         });
     </script>

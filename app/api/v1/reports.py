@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
-from app.models.models import ChatSession, ChartConfiguration, ChatMessage, SessionWorkflow, Report, Settings, ReportMessageSQL
+from app.models.models import ChatSession, ChartConfiguration, ChatMessage, SessionWorkflow, Report, Settings, ReportMessageSQL, ChartType, ReportChartConfiguration
 from datetime import datetime
 from app.schemas.report import Report as ReportSchema, ReportCreate
 from pydantic import BaseModel
@@ -27,6 +27,46 @@ class DBMetaRequest(BaseModel):
 
 class GenerateSQLRequest(BaseModel):
     message: str
+
+class ReportChartConfigCreate(BaseModel):
+    chart_type_id: int
+    x_axis_field: str
+    y_axis_field: str
+    series_field: str = None
+    size_field: str = None
+    color_field: str = None
+    options_json: str = None
+    filters_json: str = None
+
+class ReportChartConfigResponse(BaseModel):
+    id: int
+    report_id: int
+    chart_type_id: int
+    x_axis_field: str
+    y_axis_field: str
+    series_field: str = None
+    size_field: str = None
+    color_field: str = None
+    options_json: str = None
+    filters_json: str = None
+    created_at: datetime
+    updated_at: datetime = None
+    class Config:
+        orm_mode = True
+        fields = {
+            'id': 'Id',
+            'report_id': 'ReportId',
+            'chart_type_id': 'ChartTypeId',
+            'x_axis_field': 'XAxisField',
+            'y_axis_field': 'YAxisField',
+            'series_field': 'SeriesField',
+            'size_field': 'SizeField',
+            'color_field': 'ColorField',
+            'options_json': 'OptionsJson',
+            'filters_json': 'FiltersJson',
+            'created_at': 'CreatedAt',
+            'updated_at': 'UpdatedAt',
+        }
 
 @router.post("/sessions/")
 async def create_session(
@@ -163,6 +203,18 @@ def save_settings(settings_in: SettingsCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(settings)
     return settings
+
+@router.get("/chart-types")
+def get_chart_types(db: Session = Depends(get_db)):
+    chart_types = db.query(ChartType).all()
+    return [
+        {
+            "id": ct.Id,
+            "name": ct.Name,
+            "description": ct.Description
+        }
+        for ct in chart_types
+    ]
 
 @router.get("/{report_id}", response_model=ReportSchema)
 def get_report(report_id: int, db: Session = Depends(get_db)):
@@ -359,4 +411,46 @@ def generate_sql(req: GenerateSQLRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Gemini API error: " + response.text)
     data = response.json()
     generated_sql = data["candidates"][0]["content"]["parts"][0]["text"]
-    return {"generated_sql": generated_sql} 
+    return {"generated_sql": generated_sql}
+
+@router.post("/{report_id}/chart-configurations", response_model=ReportChartConfigResponse)
+def create_report_chart_config(report_id: int, config: ReportChartConfigCreate, db: Session = Depends(get_db)):
+    chart_config = ReportChartConfiguration(
+        ReportId=report_id,
+        ChartTypeId=config.chart_type_id,
+        XAxisField=config.x_axis_field,
+        YAxisField=config.y_axis_field,
+        SeriesField=config.series_field,
+        SizeField=config.size_field,
+        ColorField=config.color_field,
+        OptionsJson=config.options_json,
+        FiltersJson=config.filters_json
+    )
+    db.add(chart_config)
+    db.commit()
+    db.refresh(chart_config)
+    return chart_config
+
+@router.get("/{report_id}/chart-configurations", response_model=ReportChartConfigResponse)
+def get_report_chart_config(report_id: int, db: Session = Depends(get_db)):
+    config = db.query(ReportChartConfiguration).filter(ReportChartConfiguration.ReportId == report_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Chart configuration not found")
+    return config
+
+@router.put("/{report_id}/chart-configurations/{config_id}", response_model=ReportChartConfigResponse)
+def update_report_chart_config(report_id: int, config_id: int, config: ReportChartConfigCreate, db: Session = Depends(get_db)):
+    chart_config = db.query(ReportChartConfiguration).filter(ReportChartConfiguration.Id == config_id, ReportChartConfiguration.ReportId == report_id).first()
+    if not chart_config:
+        raise HTTPException(status_code=404, detail="Chart configuration not found")
+    chart_config.ChartTypeId = config.chart_type_id
+    chart_config.XAxisField = config.x_axis_field
+    chart_config.YAxisField = config.y_axis_field
+    chart_config.SeriesField = config.series_field
+    chart_config.SizeField = config.size_field
+    chart_config.ColorField = config.color_field
+    chart_config.OptionsJson = config.options_json
+    chart_config.FiltersJson = config.filters_json
+    db.commit()
+    db.refresh(chart_config)
+    return chart_config 
