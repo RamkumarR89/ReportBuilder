@@ -160,3 +160,14 @@ class ReportChartConfiguration(Base):
     FiltersJson = Column(Text)
     CreatedAt = Column(DateTime, default=datetime.utcnow)
     UpdatedAt = Column(DateTime, onupdate=datetime.utcnow)
+
+class ReportWorkflow(Base):
+    __tablename__ = "ReportWorkflow"
+    Id = Column(Integer, primary_key=True, autoincrement=True)
+    ReportId = Column(Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, unique=True)
+    HasReportName = Column(Boolean, default=False, nullable=False)
+    HasMessageQuery = Column(Boolean, default=False, nullable=False)
+    HasChartConfigured = Column(Boolean, default=False, nullable=False)
+    IsPublished = Column(Boolean, default=False, nullable=False)
+    CreatedAt = Column(DateTime, default=datetime.utcnow)
+    UpdatedAt = Column(DateTime, onupdate=datetime.utcnow)

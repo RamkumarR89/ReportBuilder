@@ -429,6 +429,23 @@
                     modal.show();
                 });
             });
+
+            // Add click listeners for PublishReport links
+            document.querySelectorAll('.publish-report-link').forEach(link => {
+                link.addEventListener('click', async function(e) {
+                    e.preventDefault();
+                    const reportId = this.getAttribute('data-id');
+                    if (!confirm('Are you sure you want to publish this report?')) return;
+                    const res = await fetch(`/api/v1/reports/${reportId}/publish`, { method: 'POST' });
+                    if (res.ok) {
+                        alert('Report published!');
+                        document.getElementById('reportListBtn').click();
+                    } else {
+                        const data = await res.json();
+                        alert('Failed to publish: ' + (data.detail || 'Unknown error'));
+                    }
+                });
+            });
         });
 
         // Handle report form submit

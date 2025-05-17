@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
-from app.models.models import ChatSession, ChartConfiguration, ChatMessage, SessionWorkflow, Report, Settings, ReportMessageSQL, ChartType, ReportChartConfiguration
+from app.models.models import ChatSession, ChartConfiguration, ChatMessage, SessionWorkflow, Report, Settings, ReportMessageSQL, ChartType, ReportChartConfiguration, ReportWorkflow
 from datetime import datetime
 from app.schemas.report import Report as ReportSchema, ReportCreate
 from pydantic import BaseModel
@@ -182,6 +182,10 @@ def create_report(report: ReportCreate, db: Session = Depends(get_db)):
     db.add(db_report)
     db.commit()
     db.refresh(db_report)
+    # Create ReportWorkflow row
+    workflow = ReportWorkflow(ReportId=db_report.id, HasReportName=True)
+    db.add(workflow)
+    db.commit()
     return db_report
 
 @router.get("/settings", response_model=SettingsResponse)
@@ -254,6 +258,10 @@ def add_message(report_id: int, msg: ChatMessageCreate, db: Session = Depends(ge
         CreatedAt=datetime.utcnow()
     )
     db.add(report_msg)
+    # Update workflow
+    workflow = db.query(ReportWorkflow).filter(ReportWorkflow.ReportId == report_id).first()
+    if workflow:
+        workflow.HasMessageQuery = True
     db.commit()
     db.refresh(report_msg)
     return {"message": "Saved", "id": report_msg.Id}
@@ -427,6 +435,10 @@ def create_report_chart_config(report_id: int, config: ReportChartConfigCreate, 
         FiltersJson=config.filters_json
     )
     db.add(chart_config)
+    # Update workflow
+    workflow = db.query(ReportWorkflow).filter(ReportWorkflow.ReportId == report_id).first()
+    if workflow:
+        workflow.HasChartConfigured = True
     db.commit()
     db.refresh(chart_config)
     return chart_config
@@ -453,4 +465,26 @@ def update_report_chart_config(report_id: int, config_id: int, config: ReportCha
     chart_config.FiltersJson = config.filters_json
     db.commit()
     db.refresh(chart_config)
-    return chart_config 
+    return chart_config
+
+@router.get("/{report_id}/has-publish-report")
+def has_publish_report(report_id: int, db: Session = Depends(get_db)):
+    # Check report exists and not deleted
+    report = db.query(Report).filter(Report.id == report_id, Report.is_deleted == False).first()
+    if not report:
+        return {"can_publish": False}
+    # Check at least one message
+    has_message = db.query(ReportMessageSQL).filter(ReportMessageSQL.ReportId == report_id, ReportMessageSQL.is_deleted == False).first() is not None
+    # Check chart config
+    has_chart = db.query(ReportChartConfiguration).filter(ReportChartConfiguration.ReportId == report_id).first() is not None
+    can_publish = has_message and has_chart
+    return {"can_publish": can_publish}
+
+@router.post("/{report_id}/publish")
+def publish_report(report_id: int, db: Session = Depends(get_db)):
+    workflow = db.query(ReportWorkflow).filter(ReportWorkflow.ReportId == report_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found for this report")
+    workflow.IsPublished = True
+    db.commit()
+    return {"message": "Report published"} 
