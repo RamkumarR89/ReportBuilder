@@ -95,10 +95,10 @@
                 <!-- Chart/Data Display Area -->
                 <div id="chartContainer" style="display:none; margin-top:2rem;">
                     <h3 id="chartTitle"></h3>
-                    <div id="chartConfigJson" style="font-size:small; color:gray;"></div>
+                    <div id="chartConfigJson" style="font-size:small; color:gray; display:none;"></div>
                     <div id="chartDataTable"></div>
                     <div id="chartjsChart" style="width: 100%; min-height: 400px;">
-                        <canvas id="myChart" style="width:100%;height:400px;"></canvas>
+                        <canvas id="myChart" style="display:block; margin:0 auto; max-width:900px; width:100%; height:400px;"></canvas>
                     </div>
                 </div>
             </main>
@@ -836,6 +836,10 @@
             // Show only the dashboard welcome section and the sidebar
             document.getElementById('dashboardWelcomeSection').style.display = '';
             document.getElementById('reportSidebar').style.display = 'block';
+            // Hide all right-side content except welcome section
+            document.getElementById('mainDashboardContent').style.display = 'none';
+            document.getElementById('reportListSection').style.display = 'none';
+            document.getElementById('chartContainer').style.display = 'none';
         });
 
         // Hide sidebar for all other main menu actions
@@ -889,10 +893,12 @@
             });
         }
         function showReportDetails(reportId) {
-            document.getElementById('dashboardWelcomeSection').style.display = 'none';
-            document.getElementById('reportListSection').style.display = 'none';
-            // Always hide sidebar in report details view
-            document.getElementById('reportSidebar').style.display = 'none';
+    document.getElementById('dashboardWelcomeSection').style.display = 'none';
+    document.getElementById('reportListSection').style.display = 'none';
+    // Show main content area (needed for chart to display)
+    document.getElementById('mainDashboardContent').style.display = '';
+    // Keep sidebar visible when a sidebar report is clicked
+    document.getElementById('reportSidebar').style.display = 'block';
 
             let chartConfig = null;
             fetch(`/api/v1/reports/${reportId}/chart-configurations`)
@@ -900,8 +906,14 @@
                 .then(config => {
                     chartConfig = config;
                     document.getElementById('chartContainer').style.display = '';
-                    document.getElementById('chartTitle').textContent = 'Chart for Report ID: ' + reportId;
-                    document.getElementById('chartConfigJson').textContent = config ? JSON.stringify(config, null, 2) : 'No chart configuration found.';
+                    // Show a user-friendly chart title
+                    let chartTitle = 'Chart for Report ID: ' + reportId;
+                    if (config && config.XAxisField && config.YAxisField) {
+                        chartTitle += ` (<b>${config.XAxisField}</b> vs <b>${config.YAxisField}</b>)`;
+                    }
+                    document.getElementById('chartTitle').innerHTML = chartTitle;
+                    // Hide the raw config JSON by default
+                    document.getElementById('chartConfigJson').style.display = 'none';
                     return fetch(`/api/v1/reports/${reportId}/run-sql`);
                 })
                 .then(res => res.ok ? res.json() : null)
@@ -967,6 +979,10 @@
             if (chartInstance) {
                 chartInstance.destroy();
             }
+            // Set fixed size for chart
+            const chartCanvas = document.getElementById('myChart');
+            chartCanvas.width = 900;
+            chartCanvas.height = 400;
             // Use the common extraction function
             const { labels, values, labelField, valueField } = extractChartData(dataJson, config);
             let chartjsType = 'bar';
@@ -1003,7 +1019,8 @@
                     }]
                 },
                 options: {
-                    responsive: true,
+                    responsive: false,
+                    maintainAspectRatio: false,
                     plugins: {
                         legend: { display: chartjsType === 'pie' },
                         title: {
