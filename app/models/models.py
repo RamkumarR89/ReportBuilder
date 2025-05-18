@@ -133,6 +133,7 @@ class Settings(Base):
     db_server = Column(String(255), nullable=True)
     db_user = Column(String(255), nullable=True)
     db_password = Column(String(255), nullable=True)
+    db_name = Column(String(255), nullable=True)
     gemini_model = Column(String(255), nullable=True)
     gemini_api_key = Column(String(255), nullable=True)
 

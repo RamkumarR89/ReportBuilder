@@ -509,4 +509,40 @@ def publish_report(report_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Workflow not found for this report")
     workflow.IsPublished = True
     db.commit()
-    return {"message": "Report published"} 
+    return {"message": "Report published"}
+
+@router.get("/{report_id}/run-sql")
+def run_report_sql(report_id: int, db: Session = Depends(get_db)):
+    # Get latest generated_sql for this report
+    msg = db.query(ReportMessageSQL).filter(
+        ReportMessageSQL.ReportId == report_id,
+        ReportMessageSQL.is_deleted == False
+    ).order_by(ReportMessageSQL.CreatedAt.desc()).first()
+    if not msg or not msg.GeneratedSql:
+        raise HTTPException(status_code=404, detail="No generated SQL found for this report")
+    sql = msg.GeneratedSql
+
+    # Get DB connection info from settings
+    settings = db.query(Settings).first()
+    if not settings or not settings.db_server or not settings.db_user or not settings.db_password or not settings.db_name:
+        raise HTTPException(status_code=500, detail="DB settings not found or incomplete (missing db_name)")
+    conn_str = (
+        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+        f"SERVER={settings.db_server};"
+        f"DATABASE={settings.db_name};"
+        f"UID={settings.db_user};"
+        f"PWD={settings.db_password};"
+        f"TrustServerCertificate=yes;"
+    )
+
+    # Run the SQL
+    try:
+        with pyodbc.connect(conn_str) as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            columns = [column[0] for column in cursor.description]
+            rows = cursor.fetchall()
+            data = [dict(zip(columns, row)) for row in rows]
+        return {"columns": columns, "rows": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) 

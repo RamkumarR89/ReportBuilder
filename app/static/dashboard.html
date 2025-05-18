@@ -7,6 +7,21 @@
     <style>
         .container { margin-top: 4rem; }
         .nav-link { font-size: 1.1rem; }
+        #googleChart {
+            position: relative;
+        }
+        .no-data-label {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #888;
+            font-size: 1.5rem;
+            font-weight: bold;
+            pointer-events: none;
+            z-index: 10;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -35,32 +50,52 @@
             </div>
         </div>
     </nav>
-    <div class="container">
-        <div id="dashboardWelcomeSection" class="mt-5">
-            <h1 class="mt-4">
-                Welcome to your Report Builder!
-                <span id="schemaStatusBadge" class="badge align-middle" style="font-size:1rem; margin-left:1rem;"></span>
-            </h1>
-            <p>You are logged in.</p>
-        </div>
-        <div id="reportListSection" style="display:none;">
-            <h2 class="mt-4">Report List</h2>
-            <div class="mb-3">
-                <button id="createReportBtnList" class="btn btn-primary">Create Report</button>
-            </div>
-            <table class="table table-bordered mt-3">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Title</th>
-                        <th>Description</th>
-                        <th>Created At</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody id="reportListTable"></tbody>
-            </table>
-            <div id="reportListMsg" class="text-danger"></div>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav id="reportSidebar" class="col-md-2 d-none d-md-block bg-light sidebar">
+                <div class="position-sticky pt-3">
+                    <ul class="nav flex-column" id="sidebarReportList">
+                        <!-- Report names will be injected here -->
+                    </ul>
+                </div>
+            </nav>
+            <!-- Main Content -->
+            <main class="col-md-10 ms-sm-auto col-lg-10 px-md-4" id="mainDashboardContent">
+                <div id="dashboardWelcomeSection" class="mt-5">
+                    <h1 class="mt-4">
+                        Welcome to your Report Builder!
+                        <span id="schemaStatusBadge" class="badge align-middle" style="font-size:1rem; margin-left:1rem;"></span>
+                    </h1>
+                    <p>You are logged in.</p>
+                </div>
+                <div id="reportListSection" style="display:none;">
+                    <h2 class="mt-4">Report List</h2>
+                    <div class="mb-3">
+                        <button id="createReportBtnList" class="btn btn-primary">Create Report</button>
+                    </div>
+                    <table class="table table-bordered mt-3">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Title</th>
+                                <th>Description</th>
+                                <th>Created At</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportListTable"></tbody>
+                    </table>
+                    <div id="reportListMsg" class="text-danger"></div>
+                </div>
+                <!-- Chart/Data Display Area -->
+                <div id="chartContainer" style="display:none; margin-top:2rem;">
+                    <h3 id="chartTitle"></h3>
+                    <div id="chartConfigJson" style="font-size:small; color:gray;"></div>
+                    <div id="chartDataTable"></div>
+                    <div id="googleChart" style="width: 100%; min-height: 400px;"></div>
+                </div>
+            </main>
         </div>
     </div>
 
@@ -161,6 +196,10 @@
                 <input type="text" class="form-control" id="dbServer">
               </div>
               <div class="mb-3">
+                <label for="dbName" class="form-label">DB Name</label>
+                <input type="text" class="form-control" id="dbName">
+              </div>
+              <div class="mb-3">
                 <label for="dbUser" class="form-label">DB User</label>
                 <input type="text" class="form-control" id="dbUser">
               </div>
@@ -239,6 +278,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
     <script>
         // Show modal on Create Report click
         document.getElementById('createReportBtn').addEventListener('click', function(e) {
@@ -567,6 +607,7 @@
                 if (response.ok) {
                     const data = await response.json();
                     document.getElementById('dbServer').value = data.db_server || '';
+                    document.getElementById('dbName').value = data.db_name || '';
                     document.getElementById('dbUser').value = data.db_user || '';
                     document.getElementById('dbPassword').value = data.db_password || '';
                     document.getElementById('geminiModel').value = data.gemini_model || 'gemini-2.0-flash';
@@ -574,6 +615,7 @@
                 } else {
                     // If not found, clear fields
                     document.getElementById('dbServer').value = '';
+                    document.getElementById('dbName').value = '';
                     document.getElementById('dbUser').value = '';
                     document.getElementById('dbPassword').value = '';
                     document.getElementById('geminiModel').value = 'gemini-2.0-flash';
@@ -582,6 +624,7 @@
             } catch (err) {
                 // On error, clear fields
                 document.getElementById('dbServer').value = '';
+                document.getElementById('dbName').value = '';
                 document.getElementById('dbUser').value = '';
                 document.getElementById('dbPassword').value = '';
                 document.getElementById('geminiModel').value = 'gemini-2.0-flash';
@@ -596,6 +639,7 @@
         document.getElementById('settingsForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const db_server = document.getElementById('dbServer').value;
+            const db_name = document.getElementById('dbName').value;
             const db_user = document.getElementById('dbUser').value;
             const db_password = document.getElementById('dbPassword').value;
             const gemini_model = document.getElementById('geminiModel').value;
@@ -608,6 +652,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         db_server,
+                        db_name,
                         db_user,
                         db_password,
                         gemini_model,
@@ -763,6 +808,137 @@
             document.getElementById('reportMsg').textContent = '';
             modal.show();
         });
+
+        async function loadSidebarReports() {
+            const [reports, workflowStatus] = await Promise.all([
+                fetch('/api/v1/reports/').then(res => res.json()),
+                fetch('/api/v1/reports/workflow-status').then(res => res.json())
+            ]);
+            const sidebar = document.getElementById('sidebarReportList');
+            sidebar.innerHTML = '';
+            reports.forEach(report => {
+                const workflow = workflowStatus.find(w => w.report_id === report.id);
+                if (
+                    workflow &&
+                    workflow.has_report_name &&
+                    workflow.has_message_query &&
+                    workflow.has_chart_configured &&
+                    workflow.is_published &&
+                    !report.is_deleted
+                ) {
+                    const li = document.createElement('li');
+                    li.className = 'nav-item';
+                    li.innerHTML = `<a href="#" class="nav-link report-sidebar-link" data-id="${report.id}">${report.title}</a>`;
+                    sidebar.appendChild(li);
+                }
+            });
+            document.querySelectorAll('.report-sidebar-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const reportId = this.getAttribute('data-id');
+                    showReportDetails(reportId);
+                });
+            });
+        }
+        function showReportDetails(reportId) {
+            document.getElementById('dashboardWelcomeSection').style.display = 'none';
+            document.getElementById('reportListSection').style.display = 'none';
+
+            let chartConfig = null;
+            fetch(`/api/v1/reports/${reportId}/chart-configurations`)
+                .then(res => res.ok ? res.json() : null)
+                .then(config => {
+                    chartConfig = config;
+                    document.getElementById('chartContainer').style.display = '';
+                    document.getElementById('chartTitle').textContent = 'Chart for Report ID: ' + reportId;
+                    document.getElementById('chartConfigJson').textContent = config ? JSON.stringify(config, null, 2) : 'No chart configuration found.';
+                    return fetch(`/api/v1/reports/${reportId}/run-sql`);
+                })
+                .then(res => res.ok ? res.json() : null)
+                .then(dataJson => {
+                    // Hide the data table
+                    document.getElementById('chartDataTable').innerHTML = '';
+                    // Always try to render the chart, even if no data
+                    if (chartConfig && dataJson && dataJson.rows) {
+                        const xField = chartConfig.XAxisField;
+                        const yField = chartConfig.YAxisField;
+                        // Filter data for chart
+                        const filteredData = {
+                            columns: [xField, yField],
+                            rows: dataJson.rows.map(row => ({
+                                [xField]: row[xField],
+                                [yField]: row[yField]
+                            }))
+                        };
+                        const chartTypeName = chartTypeMap[chartConfig.ChartTypeId] || 'Pie';
+                        renderGoogleChart(chartTypeName, chartConfig, filteredData);
+                    } else if (chartConfig) {
+                        const chartTypeName = chartTypeMap[chartConfig.ChartTypeId] || 'Pie';
+                        renderGoogleChart(chartTypeName, chartConfig, dataJson);
+                    } else {
+                        document.getElementById('googleChart').innerHTML = '';
+                    }
+                });
+        }
+        // Call this on page load
+        loadSidebarReports();
+
+        // ChartTypeId to Name mapping
+        let chartTypeMap = {};
+        fetch('/api/v1/reports/chart-types')
+          .then(res => res.json())
+          .then(types => {
+            types.forEach(t => {
+              chartTypeMap[t.id] = t.name;
+            });
+          });
+
+        function renderGoogleChart(chartType, config, dataJson) {
+            // Remove any previous no-data label
+            const chartDiv = document.getElementById('googleChart');
+            const oldLabel = document.getElementById('noDataOverlay');
+            if (oldLabel) oldLabel.remove();
+
+            google.charts.load('current', {'packages':['corechart']});
+            google.charts.setOnLoadCallback(drawChart);
+
+            function drawChart() {
+                let hasData = dataJson && dataJson.rows && dataJson.rows.length > 0;
+                if (chartType === 'Pie') {
+                    let dataArr = [];
+                    const labelField = config.XAxisField || 'Label';
+                    const valueField = config.YAxisField || 'Value';
+                    dataArr.push([labelField, valueField]);
+                    if (hasData) {
+                        dataJson.rows.forEach(row => {
+                            dataArr.push([row[labelField], Number(row[valueField])]);
+                        });
+                    } else {
+                        // Add a single dummy row so Google Charts draws the chart area
+                        dataArr.push(['', 0.00001]);
+                    }
+                    var data = google.visualization.arrayToDataTable(dataArr);
+                    var options = {
+                        title: config.OptionsJson && JSON.parse(config.OptionsJson).title ? JSON.parse(config.OptionsJson).title : 'Pie Chart',
+                        width: '100%',
+                        height: 400,
+                        legend: { position: 'none' }
+                    };
+                    var chart = new google.visualization.PieChart(chartDiv);
+                    google.visualization.events.addListener(chart, 'ready', function() {
+                        if (!hasData) {
+                            const label = document.createElement('div');
+                            label.className = 'no-data-label';
+                            label.id = 'noDataOverlay';
+                            label.innerText = 'No data available';
+                            chartDiv.appendChild(label);
+                        }
+                    });
+                    chart.draw(data, options);
+                }
+                // TODO: Add similar logic for Bar, Line, etc.
+            }
+        }
     </script>
 </body>
 </html> 
