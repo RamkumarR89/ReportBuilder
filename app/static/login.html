@@ -85,7 +85,10 @@
                     successMsg.style.display = 'block';
                     successMsg.textContent = isSignup ? 'Signup successful! You can now log in.' : `Welcome, ${data.username}!`;
                     if (!isSignup) {
-                        // Redirect or store user info as needed
+                        // Store user id in localStorage for /me endpoint
+                        if (data.id) {
+                            localStorage.setItem('user_id', data.id);
+                        }
                         setTimeout(() => { window.location.href = '/static/dashboard.html'; }, 1500);
                     }
                 }
